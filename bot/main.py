@@ -167,25 +167,24 @@ async def run_webhook(app) -> None:
     Serves:
       GET  /         → health check, returns "NaijaTax Bot is running"
       POST /{TOKEN}  → webhook endpoint for Telegram updates
+
+    Startup order:
+      1. Initialise PTB internals.
+      2. Start the aiohttp server so it can accept requests immediately.
+      3. Register the webhook with Telegram (after the server is ready).
     """
     from aiohttp import web
     from telegram import Update
 
     bot_token = os.environ["BOT_TOKEN"]
-    webhook_url = os.environ["WEBHOOK_URL"]
+    # Strip trailing slash so the webhook URL is never "example.com//TOKEN"
+    webhook_url = os.environ["WEBHOOK_URL"].rstrip("/")
     port = int(os.environ.get("PORT", 8443))
     webhook_path = f"/{bot_token}"
 
     # Initialise PTB (sets up internal state, job queue, etc.)
     await app.initialize()
     await app.start()
-
-    # Register webhook with Telegram
-    await app.bot.set_webhook(
-        url=f"{webhook_url}{webhook_path}",
-        allowed_updates=Update.ALL_TYPES,
-    )
-    logger.info("Webhook registered at %s%s", webhook_url, webhook_path)
 
     # Health check handler
     async def health(request: web.Request) -> web.Response:
@@ -202,7 +201,8 @@ async def run_webhook(app) -> None:
             logger.error("Error processing webhook update: %s", exc, exc_info=True)
         return web.Response(status=200, text="OK")
 
-    # Build aiohttp web app
+    # Start the aiohttp server BEFORE registering the webhook so Telegram
+    # can immediately deliver updates as soon as registration completes.
     web_app = web.Application()
     web_app.router.add_get("/", health)
     web_app.router.add_post(webhook_path, handle_update)
@@ -212,6 +212,20 @@ async def run_webhook(app) -> None:
     site = web.TCPSite(runner, "0.0.0.0", port)
     await site.start()
     logger.info("NaijaTax Bot webhook server started on port %d", port)
+
+    # Now register the webhook with Telegram.
+    try:
+        await app.bot.set_webhook(
+            url=f"{webhook_url}{webhook_path}",
+            allowed_updates=Update.ALL_TYPES,
+        )
+        logger.info("Webhook registered at %s%s", webhook_url, webhook_path)
+    except Exception as exc:
+        logger.error(
+            "Failed to register webhook — bot will not receive updates: %s",
+            exc,
+            exc_info=True,
+        )
 
     try:
         # Block forever until process is killed
