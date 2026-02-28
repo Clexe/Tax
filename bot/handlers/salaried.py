@@ -526,7 +526,6 @@ def build_salaried_conv() -> ConversationHandler:
             CommandHandler("cancel", cancel),
         ],
         allow_reentry=True,
-        per_message=False,
         per_chat=True,
         per_user=True,
     )

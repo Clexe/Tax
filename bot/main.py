@@ -25,10 +25,21 @@ import asyncio
 import logging
 import os
 import sys
+import warnings
 
 from dotenv import load_dotenv
 
 load_dotenv()
+
+# Suppress PTBUserWarning raised when ConversationHandler uses per_message=False
+# with CallbackQueryHandlers.  The default (per_message=False) is intentional
+# here because every flow mixes MessageHandlers and CallbackQueryHandlers;
+# per_message=True would break the text-input states.
+warnings.filterwarnings(
+    "ignore",
+    message="If 'per_message=False'",
+    category=UserWarning,
+)
 
 # ------------------------------------------------------------------ #
 # Logging setup (must be done before any other imports that log)       #
