@@ -40,7 +40,14 @@ def _create_engine_from_env():
     if url.startswith("sqlite"):
         # SQLite doesn't support pool_pre_ping the same way, use connect_args
         return create_engine(url, connect_args={"check_same_thread": False})
-    return create_engine(url, pool_pre_ping=True, pool_size=5, max_overflow=10)
+    return create_engine(
+        url,
+        pool_pre_ping=True,
+        pool_size=5,
+        max_overflow=10,
+        pool_timeout=10,            # seconds to wait for a free connection from the pool
+        connect_args={"connect_timeout": 10},  # seconds for initial TCP handshake
+    )
 
 
 engine = _create_engine_from_env()

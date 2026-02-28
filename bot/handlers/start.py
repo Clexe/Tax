@@ -35,17 +35,35 @@ async def start_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> N
     - Upserts the user in the database.
     - Loads stored language preference.
     - Shows welcome message with language selector.
+
+    DB calls are best-effort: if they fail or time out the welcome message
+    is still sent, preventing the bot from appearing unresponsive when
+    the database is slow to accept connections.
     """
     try:
         user = update.effective_user
         if user is None:
             return
 
-        # Upsert user in DB (non-blocking via thread)
-        await asyncio.to_thread(db.upsert_user, user.id, user.username)
+        # Best-effort DB operations — welcome must always be sent even if DB
+        # is temporarily slow or unavailable.
+        lang = "en"
+        try:
+            await asyncio.wait_for(
+                asyncio.to_thread(db.upsert_user, user.id, user.username),
+                timeout=5.0,
+            )
+            lang = await asyncio.wait_for(
+                asyncio.to_thread(db.get_language, user.id),
+                timeout=5.0,
+            )
+        except Exception as db_err:
+            logger.warning(
+                "DB unavailable in start_command user=%s: %s",
+                getattr(user, "id", "?"),
+                db_err,
+            )
 
-        # Load stored language preference
-        lang = await asyncio.to_thread(db.get_language, user.id)
         context.user_data["lang"] = lang
 
         await update.message.reply_html(
